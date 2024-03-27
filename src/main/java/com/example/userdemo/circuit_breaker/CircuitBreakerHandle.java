@@ -3,73 +3,101 @@ package com.example.userdemo.circuit_breaker;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
 
 @Data
 @Slf4j
+
 public class CircuitBreakerHandle {
   private CircuitBreakerState state;
-  private int failureCount =0 ;
-  private int successCount =0;
-  private int failureCountInHalfOpen =0;
-  private long lastFailureTime =0;
+  private static int failureCount =0 ;
+  private CircuitBreakerConfig config;
+  private static int successCount =0;
+  private static int failureCountInHalfOpen =0;
+  private static long lastFailureTime =0;
   private ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
 
 
-  public synchronized void handleSuccess(int successThresholdInHalfOpen) {
+  public CircuitBreakerHandle(CircuitBreakerConfig config) {
+    this.config = config;
+    this.state = CircuitBreakerState.CLOSED;
+
+  }
+  public synchronized <T> T call(Supplier<T> supplier, FallbackFunction<T> fallback) {
+    if (state == CircuitBreakerState.OPEN) {
+      return fallback.apply();
+    }
+
+    Future<T> future = executor.submit(supplier::get);
+
+    try {
+      T result = future.get(config.getTimeoutDuration(), TimeUnit.MILLISECONDS);
+      handleSuccess();
+      return result;
+    } catch (TimeoutException e) {
+      future.cancel(true);
+      handleFailure();
+      return fallback.apply();
+    } catch (Exception e) {
+      handleFailure();
+      return fallback.apply();
+    }
+  }
+
+  public  void handleSuccess() {
     if (state == CircuitBreakerState.HALF_OPEN &&
-          successCount >= successThresholdInHalfOpen) {
+          successCount >= config.getSuccessThresholdInHalfOpen()) {
       this.reset();
     }
 
     successCount++;
   }
 
-  public synchronized  void handleFailure(int failureThreshold, int failureThresholdInHalfOpen, int openToHalfOpenWaitTime) {
+  public  void handleFailure() {
     if (state == CircuitBreakerState.HALF_OPEN) {
       failureCountInHalfOpen++;
-      if (failureCountInHalfOpen >= failureThresholdInHalfOpen) {
-        this.transitionToOpen(openToHalfOpenWaitTime);
+      if (failureCountInHalfOpen >= config.getFailureThresholdInHalfOpen()) {
+        this.transitionToOpen();
         lastFailureTime = System.currentTimeMillis();
       }
     } else {
       failureCount++;
-      if (failureCount >= failureThreshold) {
+      if (failureCount >= config.getFailureThreshold()) {
         lastFailureTime = System.currentTimeMillis();
-        this.transitionToOpen(openToHalfOpenWaitTime);
+        this.transitionToOpen();
       }
     }
   }
 
-  public synchronized void transitionToHalfOpen() {
+  public  void transitionToHalfOpen() {
     if (state == CircuitBreakerState.OPEN) {
       state = CircuitBreakerState.HALF_OPEN;
       this.resetHalfOpenCounters();
     }
   }
 
-  public synchronized void transitionToOpen(int openToHalfOpenWaitTime) {
+  public  void transitionToOpen() {
     state = CircuitBreakerState.OPEN;
     this.resetHalfOpenCounters();
     executor.schedule(this::transitionToHalfOpen,
-          openToHalfOpenWaitTime,
+          config.getOpenToHalfOpenWaitTime(),
           TimeUnit.MILLISECONDS);
   }
 
-  public synchronized void shutdown() {
+  public  void shutdown() {
     executor.shutdown();
   }
 
-  private synchronized void reset() {
+  private  void reset() {
     state = CircuitBreakerState.CLOSED;
     failureCount = 0;
     resetHalfOpenCounters();
   }
 
-  private synchronized void resetHalfOpenCounters() {
+  private  void resetHalfOpenCounters() {
     successCount = 0;
     failureCountInHalfOpen = 0;
   }

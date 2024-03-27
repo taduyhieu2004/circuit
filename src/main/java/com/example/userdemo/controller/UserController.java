@@ -1,9 +1,8 @@
-package com.example.userdemo.Controller;
+package com.example.userdemo.controller;
 
 import com.example.userdemo.entity.User;
 import com.example.userdemo.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

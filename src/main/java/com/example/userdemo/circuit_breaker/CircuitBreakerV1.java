@@ -7,7 +7,7 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
-public @interface CircuitBreakerV1 {
+public @interface CircuitBreakerV1  {
 
   String name();
 
