@@ -14,7 +14,7 @@ public class Configuration {
   }
   @Bean
   public CircuitBreakerHandle customCircuitBreaker() {
-    CircuitBreakerConfig config = new CircuitBreakerConfig(2, 2000, 2, 2, 2000);
+    CircuitBreakerConfig config = new CircuitBreakerConfig(2, 10000, 2, 5, 2000);
     return new CircuitBreakerHandle(config);
   }
 

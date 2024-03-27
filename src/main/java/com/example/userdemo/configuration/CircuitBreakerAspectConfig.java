@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 @Aspect
 @Component
@@ -23,30 +23,46 @@ public class CircuitBreakerAspectConfig {
 
   private final CircuitBreakerHandle customCircuitBreaker;
 
+  private final ExecutorService executor = Executors.newFixedThreadPool(10);
+
   @Around("@annotation(com.example.userdemo.circuit_breaker.CircuitBreakerV1)")
   public Object checkCircuitBreaker(ProceedingJoinPoint joinPoint) throws Throwable {
 
 
     if (customCircuitBreaker.getState() == CircuitBreakerState.OPEN) {
-      // Nếu có tên hàm fallback được chỉ định, thì gọi hàm fallback
-      // Nếu không có hàm fallback, có thể ném ra một ngoại lệ hoặc thực hiện hành động khác
-      return new User("1","duy hieu","00231","none");
+      MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+      Method method = signature.getMethod();
+      Method fallbackMethod = joinPoint.getTarget().getClass().getMethod("fallbackMethod", String.class );
+      return fallbackMethod.invoke(joinPoint.getTarget(), joinPoint.getArgs());
+//      return invokeFallbackMethod(joinPoint,"fallbackMethod");
+
+//      return new User("1", "duy hieu", "00231", "none");
 
     }
 
+    Callable<Object> task = () -> {
+      try {
+        return joinPoint.proceed();
+      } catch (Throwable throwable) {
+        throw new RuntimeException(throwable);
+      }
+    };
+
+    Future<Object> future = executor.submit(task);
     try {
-      Object result = joinPoint.proceed();
-      customCircuitBreaker.handleSuccess();
-      return result;
-    } catch (Throwable throwable) {
+      return future.get(2000, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+
       customCircuitBreaker.handleFailure();
 
-      throw throwable;
+      throw e;
     }
   }
-
-
   private Object invokeFallbackMethod(ProceedingJoinPoint joinPoint, String methodName) throws Throwable {
+    if (methodName.isEmpty()) {
+      throw new RuntimeException("No fallback method specified");
+    }
+
     MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     Method method = signature.getMethod();
 
@@ -57,5 +73,17 @@ public class CircuitBreakerAspectConfig {
       throw new RuntimeException("Could not invoke fallback method: " + methodName, e);
     }
   }
+
+//  private Object invokeFallbackMethod(ProceedingJoinPoint joinPoint, String methodName) throws Throwable {
+//    MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+//    Method method = signature.getMethod();
+//
+//    try {
+//      Method fallbackMethod = joinPoint.getTarget().getClass().getMethod(methodName, method.getParameterTypes());
+//      return fallbackMethod.invoke(joinPoint.getTarget(), joinPoint.getArgs());
+//    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+//      throw new RuntimeException("Could not invoke fallback method: " + methodName, e);
+//    }
+//  }
 }
 

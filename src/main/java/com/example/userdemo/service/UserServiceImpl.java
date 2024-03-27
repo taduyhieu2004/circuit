@@ -31,7 +31,7 @@ public class UserServiceImpl implements UserService {
     return user;
   }
 
-  private String fallbackMethod(Exception e) {
+  private String fallbackMethod() {
     return "Address service is not responding properly";
   }
 
